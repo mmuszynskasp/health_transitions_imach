@@ -144,18 +144,20 @@ epiz1519 <- all1519 %>%
   distinct() %>%
   na.omit()
 
-msmtest <- epiz1519 %>%
-  mutate(age=50+floor(ageint/4)) %>%
+forelect <- epiz1519 %>%
   select(-c(ageint2,GALI2)) %>%
+  mutate(age1=floor(ageint/4)) %>%
   add_row(epiz1519 %>%
-            mutate(age=50+floor(ageint/4)) %>%
+            mutate(age1=floor(ageint/4)) %>%
             select(-c(ageint,GALI)) %>%
             rename(ageint=ageint2,GALI=GALI2)) %>%
   filter(sex=="1") %>%
-  select(country,newid,sex,GALI,ageint,age) %>%
+  select(country,newid,sex,GALI,ageint,age1) %>%
   distinct() %>%
   mutate(GALI=recode(GALI,'2'='2','1'='2','3'='1','0'='3'),
-         GALI=as.numeric(GALI))%>% 
+         GALI=as.numeric(GALI),
+         age=ageint/4,
+         state=GALI)%>% 
   #  filter(!is.na(GALI))%>%
   arrange(newid,ageint)#sort observations by id, required by msm package
 
@@ -164,30 +166,38 @@ msmtest <- epiz1519 %>%
 Q <- rbind(c(-0.06,0.6,0.01),c(0.11,-0.1,0.001), c(0,0,0))
 
 
-testmodel <- msm(GALI~ageint, subject=newid, data=msmtest, center=FALSE,
-                 qmatrix=Q, death=TRUE, covariates=~age, control=list(reltol=1e-32, maxit=100000, fnscale=100000), gen.inits=TRUE)
+#testmodel <- msm(GALI~ageint, subject=newid, data=msmtest, center=FALSE,
+#    qmatrix=Q, death=TRUE, control=list(reltol=1e-32, maxit=100000, fnscale=100000), gen.inits=TRUE)
 
-#probabilities
 
-#probabilities
-trprob <- cbind(rownames(pmatrix.msm(testmodel,covariates = list(age=50))),pmatrix.msm(testmodel,covariates = list(age=50)),50)[-3,]
-setwd("K:\\data\\EUROSTAT\\VID_EUSILC\\magda")
+modelelect <- msm(state~age, subject=newid, data=forelect, center=FALSE,qmatrix=Q, deathexact = 3, control=list(reltol=1e-32, maxit=100000, fnscale=100000), 
+                  gen.inits=TRUE,covariates=~age1)
+
+trprob <- cbind(rownames(pmatrix.msm(modelelect,covariates = list(age1=0))),pmatrix.msm(modelelect,covariates = list(age1=0)),50)[-3,]
+setwd("C:\\Users\\Magdalena\\demography\\withTim\\stateduration\\data\\panel1519")
 colnames(trprob) <- c("start_state", "end_st_1","end_st_2","dead","age")
 write.table(trprob, file="trprob.csv",sep=",", row.names=FALSE)
 
-for (agei in 51:119){
-  trprob <- cbind(rownames(pmatrix.msm(testmodel,covariates = list(age=agei))),pmatrix.msm(testmodel,covariates = list(age=agei)),agei)[-3,]
-  setwd("K:\\data\\EUROSTAT\\VID_EUSILC\\magda")
+for (agei in 1:60){
+  trprob <- cbind(rownames(pmatrix.msm(modelelect,covariates = list(age1=agei))),pmatrix.msm(modelelect,covariates = list(age1=agei)),50+agei)[-3,]
+  setwd("C:\\Users\\Magdalena\\demography\\withTim\\stateduration\\data\\panel1519")
   write.table(trprob, file="trprob.csv",sep=",", row.names=FALSE,col.names=FALSE, append=TRUE)
 }
-
-
 transprob <- read.table(file="trprob.csv",sep=",",header=TRUE)
 
 
+#probabilities
+transprob <- read.table(file="trprob.csv",sep=",",header=TRUE)
+
+#############################################################################################################
+######## playing with elect
+LEs    <- elect(x = modelelect, b.covariates = list(age1=0),
+                statedistdata = forelect, h = 0.5, age.max = 70, S = 25)
+
+
 # 
 # 
-# ##old plan, does not work because of small data samples
+# ##old plan,seems not necessary for Italian men
 # #####################################################################################################################################################
 # ####################### raking to pop survival margins from Eurostat 2018 life tables, with base weights
 # dev.off()
