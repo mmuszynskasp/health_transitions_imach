@@ -9,7 +9,7 @@ rm(list=ls())
 
 library(tidyr)
 library(dplyr)
-
+library(purrr)
 
 
 setwd("K:\\data\\EUROSTAT\\VID_EUSILC\\Long\\Long")
@@ -68,70 +68,81 @@ mydata <-  read.table(file="basic1519.csv", sep=",",header=TRUE)
 panel1519 <- mydata %>%
   add_row(mydata %>% #add rows for those who died in the last year 
             filter(!is.na(yeardied))%>%
-             mutate(yearint=yeardied, quartint=quarterdied, GALI=0,weighti=1,  #weight=1 to avoid many repeated spells with distinct weights only
-                    quartint=ifelse((quartint==quarterdied & yearint==yeardied),quartint+1.5,quartint)) %>% #cases when died in the same quarter aas last obs, add quarter to death date
-             distinct() %>%
-             filter(!is.na(yearint))) %>%
-  mutate(ageint=(yearint-yearbirth)*4+(quartint-quartbirh)-200, #age since 50th birthday in quarters
-         ageint=ifelse(ageint>=120,120,ageint)) %>%
+            mutate(yearint=yeardied, quartint=quarterdied, GALI=0,weighti=1,  #weight=1 to avoid many repeated spells with distinct weights only
+                   quartint=ifelse((quartint==quarterdied & yearint==yeardied),quartint+1,quartint)) %>% #cases when died in the same quarter aas last obs, add quarter to death date
+            distinct() %>%
+            filter(!is.na(yearint))) %>%
+  mutate(ageint=(yearint-yearbirth)*4+(quartint-quartbirh)-200) %>% #age since 50th birthday in quarters
+  #         ageint=ifelse(ageint>=120,120,ageint)) %>%
   filter(ageint>=0)  #there will be still cases when 2018 interview below 50, it will be deleted in the next step
 
 
 #########################weights readjustments
 syweights <- function(year){## for each country, 2-year combo, sex: 1.weights sum to 100. sorry, I do not accommodate returns to panel yet
-  indiv <- panel1519 %>% 
-      filter(yearint==year & GALI!=0) %>% 
-      left_join(panel1519 %>%  #make the data wide, 2 time points only=our interest
-                  filter(yearint==(year+1)|yeardied==year) %>% 
-                  mutate(ageint2=ageint,yearint2=yearint,quartint2=quartint,GALI2=GALI) %>%
-                  select(iid,yearint2, ageint2,quartint2,GALI2), by="iid") %>%
-      filter(ageint2>ageint) %>% 
-      filter((!is.na(yearint2)|GALI==0) & ageint<120) %>% #only those re-interviewed and less than 80 at 1st interview!!!!!!!!!!!!
+  indiv <- panel1519 %>%
+    filter(yearint==year & GALI!=0) %>%
+    left_join(panel1519 %>%  #make the data wide, 2 time points only=our interest
+                filter(yearint==(year+1)|yeardied==year) %>%
+                mutate(ageint2=ageint,yearint2=yearint,quartint2=quartint,GALI2=GALI) %>%
+                select(iid,yearint2, ageint2,quartint2,GALI2), by="iid") %>%
+    filter(ageint2>ageint) %>%
+    filter((!is.na(yearint2)|GALI==0)) %>% #only those re-interviewed!!!!!!!!!!!!
     distinct()
   grouped <- indiv %>%
-     group_by(country,sex) %>%
-     summarize(sumweights=sum(weighti)) 
+    group_by(country,sex) %>%
+    summarize(sumweights=sum(weighti))
   indiv2 <- indiv %>%
     left_join(grouped) %>%
- mutate(weightnew=100*weighti/sumweights) 
+    mutate(weightnew=100*weighti/sumweights)
   return(indiv2)
-  }
+}
 
 sample1519 <- ungroup(syweights(year=2015))%>%
   add_row(ungroup(syweights(year=2016))) %>%
   add_row(ungroup(syweights(year=2017))) %>%  
   add_row(ungroup(syweights(year=2018))) %>%
-  filter(iid!="1314560002")   #a stupid mistake in Italy when died before interview, later to be corrected 
-  
+  filter(iid!=c("1314560002","1231410001","1216090003")) #a stupid mistake in Italy when died before interview
 
-all1519 <- sample1519 %>% ###readjust weights in each country and sex, to sum to 100 000, data is still wide here
+###this part removes double records of death, it should be inside the function syweights, but I do not know how and the error is small since there are few deaths
+doubled <- sample1519 %>%   #remove the first epizode if two for death in a single year of first interview, applied in the next 
+  filter(GALI2==0 & !is.na(GALI2)) %>%
+  group_by(iid) %>%
+  summarise(maxint1=max(ageint))
+
+
+all1519 <- sample1519 %>% 
+  left_join(doubled) %>%
+  filter(!(GALI2==0 & ageint<maxint1)) %>%
+  ###readjust weights in each country and sex, to sum to 100 000, data is still wide here
   left_join(ungroup(sample1519 %>% 
-              group_by(country,sex) %>%
-              summarize(sumweights=sum(weightnew))), by=c("sex")) %>% #add country here later
-  mutate(weightnew2=10000*weightnew/sumweights.y, yearint=yearint) %>% ## for each coutry,sex: 1.weights sum to 10000
+                      group_by(country,sex) %>%
+                      summarize(sumweights=sum(weightnew))), by=c("sex")) %>% #add country here later
+  mutate(weightnew2=100000*weightnew/sumweights.y, yearint=yearint) %>% ## for each coutry,sex: 1.weights sum to 10000
   select(iid,weightnew2,yearint) %>%
   left_join(sample1519) %>%
   filter(!is.na(weightnew2)) %>% ##cases when 2018 interview below 50 deleted
   select(-c(died:yeardied,weighti,sumweights,weightnew)) %>%
   distinct()
-  
+
 epiz1519 <- all1519 %>%
   filter(yearint==2015)%>%
   mutate(iid=paste(iid,1,sep="")) %>%
   add_row(all1519 %>%
-  filter(yearint==2016)%>%
-  mutate(iid=paste(iid,2,sep="")))%>%
+            filter(yearint==2016)%>%
+            mutate(iid=paste(iid,2,sep="")))%>%
   add_row(all1519 %>%
-  filter(yearint==2017)%>%
-  mutate(iid=paste(iid,3,sep=""))) %>%
+            filter(yearint==2017)%>%
+            mutate(iid=paste(iid,3,sep=""))) %>%
   add_row(all1519 %>%
-  filter(yearint==2018)%>%
-  mutate(iid=paste(iid,4,sep=""))) %>%
+            filter(yearint==2018)%>%
+            mutate(iid=paste(iid,4,sep=""))) %>%
   select(iid,weightnew2,country,sex,GALI,ageint,ageint2,GALI2) %>%
   ###aim:blow up the sample to include the weights
   uncount(round(as.numeric(weightnew2)),.id="wid") %>% #round the weights and create new people with extra id
   mutate(newid=paste(iid,wid,sep="")) %>%
-  distinct()
+  filter(ageint<120) %>%    #1st interview before 80
+  distinct() %>%
+  na.omit()
 
 msmtest <- epiz1519 %>%
   mutate(age=50+floor(ageint/4)) %>%
@@ -140,34 +151,33 @@ msmtest <- epiz1519 %>%
             mutate(age=50+floor(ageint/4)) %>%
             select(-c(ageint,GALI)) %>%
             rename(ageint=ageint2,GALI=GALI2)) %>%
-  filter(sex=="2",ageint<120) %>%
+  filter(sex=="1") %>%
   select(country,newid,sex,GALI,ageint,age) %>%
   distinct() %>%
-  mutate(GALI=ifelse(GALI==1,2,GALI),
-         GALI=ifelse(GALI==3,1,GALI),
-         GALI=ifelse(GALI==0,3,GALI),
-         GALI=ifelse(is.na(GALI),-2,GALI)) %>% 
-#  filter(!is.na(GALI))%>%
+  mutate(GALI=recode(GALI,'2'='2','1'='2','3'='1','0'='3'),
+         GALI=as.numeric(GALI))%>% 
+  #  filter(!is.na(GALI))%>%
   arrange(newid,ageint)#sort observations by id, required by msm package
 
 
 ##model in msm
-Q <- rbind(c(-0.06,0.06,0.001),c(0.11,-0.1,0.001), c(0,0,0))
+Q <- rbind(c(-0.06,0.6,0.01),c(0.11,-0.1,0.001), c(0,0,0))
 
 
 testmodel <- msm(GALI~ageint, subject=newid, data=msmtest, center=FALSE,
-    qmatrix=Q, death=TRUE, covariates=~age, censor= -2, censor.states=c(1,2), method="BFGS",
-    control=list(reltol=1e-16, maxit=100000, fnscale=100000), gen.inits=TRUE)
+                 qmatrix=Q, death=TRUE, covariates=~age, control=list(reltol=1e-32, maxit=100000, fnscale=100000), gen.inits=TRUE)
 
 #probabilities
-trprob <- cbind(rownames(pmatrix.msm(testmodel,covariates = list(age=80))),pmatrix.msm(testmodel,covariates = list(age=80)),80)[-3,]
-setwd("C:\\Users\\Magdalena\\demography\\withTim\\stateduration\\data\\panel1519")
+
+#probabilities
+trprob <- cbind(rownames(pmatrix.msm(testmodel,covariates = list(age=50))),pmatrix.msm(testmodel,covariates = list(age=50)),50)[-3,]
+setwd("K:\\data\\EUROSTAT\\VID_EUSILC\\magda")
 colnames(trprob) <- c("start_state", "end_st_1","end_st_2","dead","age")
 write.table(trprob, file="trprob.csv",sep=",", row.names=FALSE)
 
-for (agei in 81:119){
+for (agei in 51:119){
   trprob <- cbind(rownames(pmatrix.msm(testmodel,covariates = list(age=agei))),pmatrix.msm(testmodel,covariates = list(age=agei)),agei)[-3,]
-  setwd("C:\\Users\\Magdalena\\demography\\withTim\\stateduration\\data\\panel1519")
+  setwd("K:\\data\\EUROSTAT\\VID_EUSILC\\magda")
   write.table(trprob, file="trprob.csv",sep=",", row.names=FALSE,col.names=FALSE, append=TRUE)
 }
 
@@ -177,7 +187,7 @@ transprob <- read.table(file="trprob.csv",sep=",",header=TRUE)
 
 # 
 # 
-# ##old plan
+# ##old plan, does not work because of small data samples
 # #####################################################################################################################################################
 # ####################### raking to pop survival margins from Eurostat 2018 life tables, with base weights
 # dev.off()
