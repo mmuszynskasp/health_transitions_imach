@@ -1,5 +1,5 @@
 #####################################################################################################################################################
-##################### AIM: estimate transition rates between health states, from SILC 2018-2019, health state on GALI
+##################### AIM: estimate transition rates between health states, from SILC 2015-2019, health state on GALI
 ###########################################################################################################################
 
 
@@ -29,13 +29,16 @@ dataprep <- function(year,i){
                 filter(died==6), by="iid") %>%
     left_join(read.table(file=paste("UDB_l",myfold[i],substr(year,3,4),"P.csv", sep=""), sep=",", header=TRUE) %>% #other variables
                 mutate(yearint=PB010, iid = PB030, quartint= PB100, sex = PB150,
-                       yearbirth=PB140, quartbirh= PB130, GALI = PH030, year=year, weighti=PB050) %>% 
-                select(yearint,iid, quartint,sex,yearbirth,quartbirh,GALI,weighti), by="iid") %>%
-    filter(weighti!=0)} #remove duplicate info of individuals who left one year to live in their own household, or after death
+                       yearbirth=PB140, quartbirth= PB130, GALI = PH030, year=year, weighti=PB050) %>% 
+                select(yearint,iid, quartint,sex,yearbirth,quartbirth,GALI,weighti), by="iid") %>%
+    filter(weighti!=0)} %>% #remove duplicate info of individuals who left one year to live in their own household, or after death
+  mutate(died=ifelse(died==6,1,0),
+         yearint=ifelse((died==1 & yearint==yeardied & quarterdied<=quartint & !is.na(quarterdied)),NA,yearint))
+#if died before interview, remove interview, probably proxy
 
 
 
-#years studied: 2015-2019, samples first drawn in 2012-2018
+#years studied: 2015-2019 (4 datasets 2016-2019), samples first drawn in 2012-2018
 
 i=16 #italy
 data19 <- dataprep(year=2019,i) 
@@ -43,11 +46,8 @@ data1819 <- data19%>%
   add_row(dataprep(year=2018,i)%>% filter(!(iid %in%data19$iid))) 
 data1719 <- data1819 %>%
   add_row(dataprep(year=2017,i)%>% filter(!(iid %in%data1819$iid))) 
-data1619 <- data1719 %>%
+data1519 <- data1719 %>%
   add_row(dataprep(year=2016,i)%>% filter(!(iid %in%data1719$iid))) 
-data1519 <- data1619 %>%
-  add_row(dataprep(year=2016,i)%>% filter(!(iid %in%data1619$iid))) %>%
-  distinct()
 
 
 setwd("K:\\data\\EUROSTAT\\VID_EUSILC\\magda")
@@ -84,9 +84,10 @@ long1518 <- data1519 %>%
               filter(yearint==2018) %>%
               rename(quartint18=quartint,yearint18=yearint, GALI18=GALI, weight18=weighti) %>%
               select(iid,quartint18,yearint18,GALI18,weight18)) %>%
-  distinct()
-  
-  
+  distinct() %>%
+  filter(!(is.na(yearint16)& is.na(yearint17)&is.na(yearint18) & is.na(yeardied))) #remove if no other observation
+
+
 long1619 <- data1519 %>% 
   filter(yearint==2016,!(iid %in%long1518$iid)) %>%
   rename(quartint16=quartint,yearint16=yearint, GALI16=GALI, weight16=weighti) %>%
@@ -103,11 +104,11 @@ long1619 <- data1519 %>%
               rename(quartint19=quartint,yearint19=yearint, GALI19=GALI, weight19=weighti) %>%
               select(iid,quartint19,yearint19,GALI19,weight19)) %>%
   distinct()
-  
-  
+
+
 long1719<- data1519 %>%
-              filter(yearint==2017, !(iid %in%long1619$iid),!(iid %in%long1518$iid)) %>%
-              rename(quartint17=quartint,yearint17=yearint, GALI17=GALI, weight17=weighti) %>%
+  filter(yearint==2017, !(iid %in%long1619$iid),!(iid %in%long1518$iid)) %>%
+  rename(quartint17=quartint,yearint17=yearint, GALI17=GALI, weight17=weighti) %>%
   left_join(data1519 %>%
               filter(yearint==2018) %>%
               rename(quartint18=quartint,yearint18=yearint, GALI18=GALI, weight18=weighti) %>%
@@ -141,11 +142,11 @@ longall <- long1518 %>%
                    quartint17=NA, yearint17=NA, GALI17=NA, weight17=NA))
 
 
+
+
 setwd("K:\\data\\EUROSTAT\\VID_EUSILC\\magda")
 write.table(longall, file="longall1519.csv", sep=",",row.names=FALSE)
 
-
-fixed until here!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 ####################################################################################################################################################
 ######### transition rates with msm
@@ -160,155 +161,135 @@ library(HMDHFDplus)
 library(weights)
 library(anesrake)
 
+
 setwd("K:\\data\\EUROSTAT\\VID_EUSILC\\magda")
 mydata <-  read.table(file="longall1519.csv", sep=",",header=TRUE)
 
 
-panel1519 <- mydata %>%
-  add_row(mydata %>% #add rows for those who died in the last year 
-            filter(!is.na(yeardied))%>%
-             mutate(yearint=yeardied, quartint=quarterdied, GALI=0,weighti=1,  #weight=1 to avoid many repeated spells with distinct weights only
-                    quartint=ifelse((quartint==quarterdied & yearint==yeardied),quartint+1,quartint)) %>% #cases when died in the same quarter aas last obs, add quarter to death date
-             distinct() %>%
-             filter(!is.na(yearint))) %>%
-  mutate(ageint=(yearint-yearbirth)*4+(quartint-quartbirh)-200) %>% #age since 50th birthday in quarters
+
+#mutate(ageint=(yearint-yearbirth)*4+(quartint-quartbirh)-200) %>% #age since 50th birthday in quarters
 #         ageint=ifelse(ageint>=120,120,ageint)) %>%
-  filter(ageint>=0)  #there will be still cases when 2018 interview below 50, it will be deleted in the next step
-
-##########reconstruct all histories in data
-recon1519 <- panel1519 %>%
-  
-
-
+#  filter(ageint>=0)  #there will be still cases when 2018 interview below 50, it will be deleted in the next step
 
 
 #########################weights readjustments
-syweights <- function(year){## for each country, 2-year combo, sex: 1.weights sum to 100. sorry, I do not accommodate returns to panel yet
-  indiv <- panel1519 %>%
-    filter(yearint==year & GALI!=0) %>%
-    left_join(panel1519 %>%  #make the data wide, 2 time points only=our interest
-                filter(yearint==(year+1)|yeardied==year) %>%
-                mutate(ageint2=ageint,yearint2=yearint,quartint2=quartint,GALI2=GALI) %>%
-                select(iid,yearint2, ageint2,quartint2,GALI2), by="iid") %>%
-    filter(ageint2>ageint) %>%
-    filter((!is.na(yearint2)|GALI==0)) %>% #only those re-interviewed!!!!!!!!!!!!
-    distinct()
-  grouped <- indiv %>%
-    group_by(country,sex) %>%
-    summarize(sumweights=sum(weighti))
-  indiv2 <- indiv %>%
-    left_join(grouped) %>%
-    mutate(weightnew=100*weighti/sumweights)
-  return(indiv2)
-}
+#select individuals by their longitudinal paths, in each year-groups-file and for each sex summarize to 100
+indiv1516 <- mydata %>%
+  filter(!is.na(yearint15) & (!is.na(yearint16)|yeardied==2015|(is.na(yearint16) & yeardied==2016))) %>%
+  left_join(mydata %>%
+              filter(!is.na(yearint15) & (!is.na(yearint16)|yeardied==2015|(is.na(yearint16) & yeardied==2016))) %>%
+              group_by(sex) %>%
+              dplyr::summarize(sumweights=sum(weight15))) %>%
+  mutate(weightnew=100*weight15/sumweights)
 
-sample1519 <- ungroup(syweights(year=2015))%>%
-  add_row(ungroup(syweights(year=2016))) %>%
-  add_row(ungroup(syweights(year=2017))) %>%  
-  add_row(ungroup(syweights(year=2018))) %>%
-  filter(iid!=c("1314560002","1231410001","1216090003")) #a stupid mistake in Italy when died before interview
- 
-###this part removes double records of death, it should be inside the function syweights, but I do not know how and the error is small since there are few deaths
-doubled <- sample1519 %>%   #remove the first epizode if two for death in a single year of first interview, applied in the next 
-  filter(GALI2==0 & !is.na(GALI2)) %>%
-  group_by(iid) %>%
-  summarise(maxint1=max(ageint))
 
- 
-all1519 <- sample1519 %>% 
-  left_join(doubled) %>%
-  filter(!(GALI2==0 & ageint<maxint1)) %>%
-  ###readjust weights in each country and sex, to sum to 100 000, data is still wide here
-  left_join(ungroup(sample1519 %>% 
-              group_by(country,sex) %>%
-              summarize(sumweights=sum(weightnew))), by=c("sex")) %>% #add country here later
-  mutate(weightnew2=100000*weightnew/sumweights.y, yearint=yearint) %>% ## for each coutry,sex: 1.weights sum to 10000
-  select(iid,weightnew2,yearint) %>%
-  left_join(sample1519) %>%
-  filter(!is.na(weightnew2)) %>% ##cases when 2018 interview below 50 deleted
-  select(-c(died:yeardied,weighti,sumweights,weightnew)) %>%
+indiv1617 <- mydata %>%
+  filter(!is.na(yearint16) & (!is.na(yearint17)|yeardied==2016|(is.na(yearint17) & yeardied==2017)))%>%
+  left_join(mydata %>%
+              filter(!is.na(yearint16) & (!is.na(yearint17)|yeardied==2016|(is.na(yearint17) & yeardied==2017))) %>%
+              group_by(sex) %>%
+              dplyr::summarize(sumweights=sum(weight16))) %>%
+  mutate(weightnew=100*weight16/sumweights)
+
+
+indiv1718 <- mydata %>%
+  filter(!is.na(yearint17) & (!is.na(yearint18)|yeardied==2017|(is.na(yearint18) & yeardied==2018)))%>%
+  left_join(mydata %>%
+              filter(!is.na(yearint17) & (!is.na(yearint18)|yeardied==2017|(is.na(yearint18) & yeardied==2018))) %>%
+              group_by(sex) %>%
+              dplyr::summarize(sumweights=sum(weight17))) %>%
+  mutate(weightnew=100*weight17/sumweights)
+
+
+indiv1819 <- mydata %>%
+  filter(!is.na(yearint18) & (!is.na(yearint19)|yeardied==2018|(is.na(yearint19) & yeardied==2019)))%>%
+  left_join(mydata %>% filter(!is.na(yearint18) & (!is.na(yearint19)|yeardied==2018|(is.na(yearint19) & yeardied==2019)))%>%
+              group_by(sex) %>%
+              dplyr::summarize(sumweights=sum(weight18))) %>%
+  mutate(weightnew=100*weight18/sumweights)
+
+
+
+
+indivwall <- indiv1516 %>%   ###the paired records back together
+  add_row(indiv1617 %>%
+            filter(!(indiv1617$iid %in%indiv1516$iid))) %>%
+  add_row(indiv1718 %>%
+            filter(!(indiv1718$iid %in%indiv1516$iid|indiv1718$iid %in%indiv1617$iid))) %>%
+  add_row(indiv1819 %>%
+            filter(!(indiv1819$iid %in%indiv1617$iid|indiv1819$iid %in%indiv1718$iid)))
+
+individ1519 <- indivwall %>%
+  left_join(indivwall %>%
+              group_by(sex) %>%
+              dplyr::summarize(sumweightsall=sum(weightnew)), by=c("sex")) %>% 
+  ###readjust weights for each sex together, to sum to 100 000, data is still wide here
+  mutate(weightnew=100000*weightnew/sumweightsall) %>%
+  select(-c(yearint15,weight15,yearint16,weight16,yearint17,weight17,yearint18,weight18,yearint19,weight19,sumweights,sumweightsall)) %>%
+  uncount(round(as.numeric(weightnew)),.id="wid") %>% #round the weights and create new people with extra id
+  mutate(newid=paste(iid,wid,sep="")) 
+
+## finally make the records long
+long1519 <- individ1519 %>%
+  filter(!is.na(quartint15)) %>%
+  mutate(GALI=GALI15,
+         ageint=(quartint15-quartbirth)+(2015-yearbirth)*4) %>%
+  select(newid,ageint,GALI,sex,yearbirth) %>%
+  add_row(individ1519 %>%
+            filter(!is.na(quartint16)) %>%
+            mutate(GALI=GALI16,
+                   ageint=(quartint16-quartbirth)+(2016-yearbirth)*4) %>%
+            select(newid,ageint,GALI,sex,yearbirth))%>%
+  add_row(individ1519 %>%
+            filter(!is.na(quartint17)) %>%
+            mutate(GALI=GALI17,
+                   ageint=(quartint17-quartbirth)+(2017-yearbirth)*4) %>%
+            select(newid,ageint,GALI,sex,yearbirth))%>%
+  add_row(individ1519 %>%
+            filter(!is.na(quartint18)) %>%
+            mutate(GALI=GALI18,
+                   ageint=(quartint18-quartbirth)+(2018-yearbirth)*4) %>%
+            select(newid,ageint,GALI,sex,yearbirth)) %>%
+  add_row(individ1519 %>%
+            filter(!is.na(quartint19)) %>%
+            mutate(GALI=GALI19,
+                   ageint=(quartint19-quartbirth)+(2019-yearbirth)*4) %>%
+            select(newid,ageint,GALI,sex,yearbirth))%>%
+  add_row(individ1519 %>%
+            filter(!is.na(quarterdied)) %>%
+            mutate(GALI=0,
+                   ageint=(quarterdied-quartbirth)+(yeardied-yearbirth)*4) %>%
+            select(newid,ageint,GALI,sex,yearbirth)) %>%
   distinct()
-  
-epiz1519 <- all1519 %>%
-  filter(yearint==2015)%>%
-  mutate(iid=paste(iid,1,sep="")) %>%
-  add_row(all1519 %>%
-  filter(yearint==2016)%>%
-  mutate(iid=paste(iid,2,sep="")))%>%
-  add_row(all1519 %>%
-  filter(yearint==2017)%>%
-  mutate(iid=paste(iid,3,sep=""))) %>%
-  add_row(all1519 %>%
-  filter(yearint==2018)%>%
-  mutate(iid=paste(iid,4,sep=""))) %>%
-  select(iid,weightnew2,country,sex,GALI,ageint,ageint2,GALI2) %>%
-  ###aim:blow up the sample to include the weights
-  uncount(round(as.numeric(weightnew2)),.id="wid") %>% #round the weights and create new people with extra id
-  mutate(newid=paste(iid,wid,sep="")) %>%
-  filter(ageint<120) %>%    #1st interview before 80
-  distinct() %>%
-  na.omit()
-
-####raking to survival HMD,2015-2019
-#ltdat <- readHMDweb(CNTRY="POL", "mltper_1x5")
-
-ltdat<- read.table(file="Itmales.csv",sep=" ",header=TRUE) %>%
-  filter(Year=="2015-2019", Age>=50,Age<=80) %>%
-  mutate(px=1-qx) %>%
-  select(Age,px)
-  
-  
-# ######################################
-# ###### from this point we start to prepare everything only for GALI, if needed just change in the code to self-rated health or 
-# gali1819 <- panel1819 %>%
-#   mutate(died=ifelse((died==6 & is.na(GALI.y)),1,0)) %>% #died between the interviews
-#   mutate(GALI.y=ifelse(died==1,0,GALI.y)) %>% #deaths =0  in GALI.2019 var
-#   filter(!is.na(GALI.x),!is.na(GALI.y),#remove missings of GALI in any interview, to be handled by some attrition model later
-#          ageint18>=50)  %>% #only those 50+
-#   mutate(weighti=weighti/10000) #smaller weights as R might have problems with large once
-#    
-# surv19 <- gali1819 %>%
-#   group_by(country,sex,ageint18,died) %>%
-#   summarise(forprob=sum(weighti)) %>% #sum dead and alive, age as age at interview, not perfect but good enough, including weights here
-#   pivot_wider(names_from=died, values_from = forprob, names_prefix = "out" ) %>%
-#   mutate(dead=out1, 
-#          all=out0+out1,
-#          probsurv=(all-dead)/all,
-#          probsurv=ifelse(is.na(probsurv),1,probsurv))
 
 
+write.table(long1519, file="final1519.csv", sep=",",row.names=FALSE)
 
-
-forelect <- epiz1519 %>%
-  select(-c(ageint2,GALI2)) %>%
-  mutate(age1=floor(ageint/4)) %>%
-  add_row(epiz1519 %>%
-            mutate(age1=floor(ageint/4)) %>%
-            select(-c(ageint,GALI)) %>%
-            rename(ageint=ageint2,GALI=GALI2)) %>%
-  filter(sex=="1") %>%
-  select(country,newid,sex,GALI,ageint,age1) %>%
-  distinct() %>%
+forelect <-long1519 %>%
+  filter(sex=="1", !is.na(GALI)) %>%
   mutate(GALI=recode(GALI,'2'='2','1'='2','3'='1','0'='3'),
          GALI=as.numeric(GALI),
-         age=ageint/4,
-         state=GALI)%>% 
-#  filter(!is.na(GALI))%>%
-  arrange(newid,ageint)#sort observations by id, required by msm package
+         age=floor(ageint/4),
+         time=ageint/4-60,
+         state=GALI)%>%
+  filter(age>=0 & age<=21) %>% #only those aged <50-80>
+  #  filter(!is.na(GALI))%>%
+  arrange(newid,age)#sort observations by id, required by msm package
 
 
 ##model in msm
-Q <- rbind(c(-0.06,0.6,0.01),c(0.11,-0.1,0.001), c(0,0,0))
+Q <- rbind(c(-0.23,0.23,0.004),c(0.48,-0.5,0.029), c(0,0,0))
 
 
 #testmodel <- msm(GALI~ageint, subject=newid, data=msmtest, center=FALSE,
 #    qmatrix=Q, death=TRUE, control=list(reltol=1e-32, maxit=100000, fnscale=100000), gen.inits=TRUE)
 
 
-modelelect <- msm(state~age, subject=newid, data=forelect, center=FALSE,qmatrix=Q, deathexact = 3, control=list(reltol=1e-32, maxit=100000, fnscale=100000), 
-                  gen.inits=TRUE,covariates=~age1)
+modelelect <- msm(state~time, subject=newid, data=forelect, qmatrix=Q, deathexact = 3, 
+                  control=list(reltol=1e-60, maxit=10000000, fnscale=10000000), 
+                  gen.inits=FALSE, center=FALSE, covariates=~age)
 
-trprob <- cbind(rownames(pmatrix.msm(modelelect,covariates = list(age1=0))),pmatrix.msm(modelelect,covariates = list(age1=0)),50)[-3,]
+trprob <- cbind(rownames(pmatrix.msm(modelelect,covariates = list(age=90))),pmatrix.msm(modelelect,covariates = list(age=90)),50)[-3,]
 setwd("C:\\Users\\Magdalena\\demography\\withTim\\stateduration\\data\\panel1519")
 colnames(trprob) <- c("start_state", "end_st_1","end_st_2","dead","age")
 write.table(trprob, file="trprob.csv",sep=",", row.names=FALSE)
