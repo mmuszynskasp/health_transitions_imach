@@ -117,7 +117,7 @@ all1519 <- sample1519 %>%
   left_join(ungroup(sample1519 %>% 
                       group_by(country,sex) %>%
                       summarize(sumweights=sum(weightnew))), by=c("sex")) %>% #add country here later
-  mutate(weightnew2=100000*weightnew/sumweights.y, yearint=yearint) %>% ## for each coutry,sex: 1.weights sum to 10000
+  mutate(weightnew2=10000*weightnew/sumweights.y, yearint=yearint) %>% ## for each coutry,sex: 1.weights sum to 10000
   select(iid,weightnew2,yearint) %>%
   left_join(sample1519) %>%
   filter(!is.na(weightnew2)) %>% ##cases when 2018 interview below 50 deleted
