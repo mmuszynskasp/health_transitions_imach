@@ -1,6 +1,6 @@
 #starting file for all countries by sex, wave 6-7 SHARE ADL
 #limited observations to 10000
-title=adl datafile=srESfemaledata.txt lastobs=10000 firstpass=1 lastpass=2
+title=adl datafile=srITfemaledata.txt lastobs=10000 firstpass=1 lastpass=2
 ftol=1.e-08 stepm=12 ncovcol=0 nqv=0 ntv=0 nqtv=0 nlstate=2 ndeath=1 maxwav=2 mle=1 weight=1
 model=1+age+.
 # Parameters
