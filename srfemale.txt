@@ -1,0 +1,36 @@
+#starting file for all countries by sex, wave 6-7 SHARE ADL
+#limited observations to 10000
+title=adl datafile=srESfemaledata.txt lastobs=10000 firstpass=1 lastpass=2
+ftol=1.e-08 stepm=12 ncovcol=0 nqv=0 ntv=0 nqtv=0 nlstate=2 ndeath=1 maxwav=2 mle=1 weight=1
+model=1+age+.
+# Parameters
+12  -1.1 0. 
+13  -1.1 -1.1 
+21  -1.1 0. 
+23  -2. 0. 
+# Scales
+12 0. 0.
+13 0. 0.
+21 0. 0.
+23 0. 0.
+# Covariance matrix
+121 0.
+122 0. 0.
+131 0. 0. 0.
+132 0. 0. 0. 0.
+211 0. 0. 0. 0. 0.
+212 0. 0. 0. 0. 0. 0.
+231 0. 0. 0. 0. 0. 0. 0.
+232  0. 0. 0. 0. 0. 0. 0. 0.
+# agemin agemax for life expectancy, bage fage (if mle==0 ie no data nor Max likelihood).
+agemin=50 agemax=90 bage=50 fage=120 estepm=12 ftolpl=6e-4
+# Observed prevalence period
+begin-prev-date=1/1/2015 end-prev-date=1/9/2018 mov_average=0
+# Health expectancies computed from stable (period) prevalence (pop_based=0) or population based (1)
+pop_based=1
+# Prevalence forecasting and backcasting is skept here
+##prevforecast=0  starting-proj-date=1/1/1989 final-proj-date=1/1/1990 mobil_average=0
+#prevforecast=1 yearsfproj=10 mobil_average=0
+#prevbackcast=1 yearsbproj=10 mobil_average=1
+# Results model=1+age.
+result:.
