@@ -73,7 +73,7 @@ forimach <- data67 %>%
          death=ifelse(death=="99/2018","6/2018",death),
          int2=ifelse(death!="99/9999","99/9999",int2),
          self7=ifelse(death!="99/9999",3, self7)) %>%
-  filter(weight6>0, self7>-1) %>% #do not take those who attrited
+  filter(weight6>0) %>%
   select(cname,sex,weight6, birth, death, int1, self6, int2, self7)
 
 
