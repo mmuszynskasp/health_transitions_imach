@@ -70,7 +70,7 @@ forimach <- data67 %>%   #prepare the set up for IMACH
          death=ifelse(death=="99/2018","6/2018",death),
          int2=ifelse(death!="99/9999","99/9999",int2),
          gali7=ifelse(death!="99/9999",3, gali7)) %>%
-  filter(weight6>0, gali7>-1) %>% #do not take those who attrited or not in the sample in wave 6
+  filter(weight6>0) %>%
   select(cname,sex,weight6, birth, death, int1, gali6, int2, gali7)
 
 
